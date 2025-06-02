@@ -1,0 +1,107 @@
+<!--
+  This page uses TensorFlow.js and the BlazePose model to perform pose detection
+  on an uploaded image, displaying all keypoints (including mouth) and their scores.
+  To run: python3 -m http.server 3000 (then open http://localhost:3000 in your browser)
+  Requires internet access to load TensorFlow.js and the BlazePose model from CDN.
+  Make sure to include the required scripts:
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+  Upload an image using the file input to see detected keypoints and their coordinates.
+-->
+<!-- uses BlazePose -->
+<!-- to run: python3 -m http.server 3000 -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>BlazePose Image Detection</title>
+  <style>
+    canvas { border: 1px solid #000; }
+    pre {
+      text-align: left;
+      width: 80%;
+      margin: 20px auto;
+      white-space: pre-wrap;
+      font-family: monospace;
+      background: #f7f7f7;
+      padding: 1rem;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+  <h2>Upload an image for full-body + mouth keypoints</h2>
+  <input type="file" id="upload" accept="image/*" />
+  <br><br>
+  <canvas id="canvas"></canvas>
+  <pre id="keypoints-list">Keypoints will appear here after detection.</pre>
+
+  <!-- TFJS & Pose Detection -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+
+  <script>
+    const upload = document.getElementById('upload');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const keypointsList = document.getElementById('keypoints-list');
+
+    let detector;
+
+    async function init() {
+      await tf.setBackend('webgl');
+      await tf.ready();
+      detector = await poseDetection.createDetector(
+        poseDetection.SupportedModels.BlazePose,
+        {
+          runtime: 'tfjs',
+          modelType: 'full',
+        }
+      );
+    }
+
+    upload.onchange = async () => {
+      const file = upload.files[0];
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+
+      img.onload = async () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        const input = tf.browser.fromPixels(img);
+        const poses = await detector.estimatePoses(input);
+        input.dispose();
+
+        if (poses.length > 0) {
+          const keypoints = poses[0].keypoints;
+
+          // Draw and log keypoints
+          keypoints.forEach(({ x, y, score }) => {
+            if (score > 0.3) {
+              ctx.beginPath();
+              ctx.arc(x, y, 3, 0, 2 * Math.PI);
+              ctx.fillStyle = 'red';
+              ctx.fill();
+            }
+          });
+
+          const formatted = keypoints.map(kp =>
+            `${kp.name.padEnd(16)} x: ${kp.x.toFixed(1).padStart(6)}, y: ${kp.y.toFixed(1).padStart(6)}, score: ${kp.score.toFixed(2)}`
+          ).join('\n');
+
+          keypointsList.textContent = formatted;
+        } else {
+          keypointsList.textContent = 'No keypoints detected.';
+        }
+      };
+    };
+
+    init();
+  </script>
+</body>
+</html>
